@@ -1694,6 +1694,9 @@ XLATensor::CompilationResult XLATensor::Compile(
   }
 
   xla::XlaComputation computation = ConsumeValue(lowering_ctx.Build());
+  // TODO: remove
+  // computation = xla::XlaComputation(
+  //    ir::ShardingUtil::SpmdPartitioningPass(computation.proto()));
   xla::ProgramShape program_shape = ConsumeValue(computation.GetProgramShape());
   xla::Shape shape = MakeShapeWithDeviceLayout(
       program_shape.result(), static_cast<XlaDeviceType>(coll.device.type()));
