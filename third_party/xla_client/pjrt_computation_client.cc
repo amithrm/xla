@@ -79,6 +79,9 @@ std::vector<ComputationClient::DataPtr> PjRtComputationClient::TransferToServer(
   std::vector<ComputationClient::DataPtr> datas;
   datas.reserve(tensors.size());
   for (auto& tensor : tensors) {
+    std::cout << "TransferToServer -> tensor.shape: " << tensor.shape
+              << std::endl;
+
     xla::Literal literal(tensor.shape);
     tensor.populate_fn(tensor, literal.untyped_data(), literal.size_bytes());
 
@@ -115,14 +118,33 @@ std::vector<ComputationClient::ComputationPtr> PjRtComputationClient::Compile(
   std::vector<ComputationClient::ComputationPtr> computations;
 
   for (auto& instance : instances) {
+    // TODO(yeounoh) we could consider having a separate Compile fxn for SPMD,
+    // instead of maintaining a different set of compile_options within.
+    xla::CompileOptions compile_options;
+
+    auto& module_proto = instance.computation.proto();
+    if (module_proto.has_spmd_output_sharding() ||
+        module_proto.spmd_parameters_shardings_size() > 0) {
+      // If SPMD is enabled, then we assign multi-cores to a single replica;
+      // otherwise, all cores participate in replication.
+      compile_options.executable_build_options.set_use_spmd_partitioning(true);
+      compile_options.executable_build_options.set_num_partitions(
+          client_->device_count());
+      compile_options.executable_build_options.set_num_replicas(1);
+
+      std::cout << "Testing SPMD flag in PJRT Compile()" << std::endl;
+    } else {
+      // TODO(wcromar): set compile_options.argument_layouts, enable strict
+      // shapes
+      compile_options.executable_build_options.set_num_partitions(1);
+      compile_options.executable_build_options.set_num_replicas(
+          client_->device_count());
+    }
+
     PjRtDevice* pjrt_device = StringToPjRtDevice(instance.compilation_device);
     xla::ProgramShape program_shape =
         instance.computation.GetProgramShape().ValueOrDie();
-    xla::CompileOptions compile_options;
-    // TODO(wcromar): set compile_options.argument_layouts, enable strict shapes
-    compile_options.executable_build_options.set_num_partitions(1);
-    compile_options.executable_build_options.set_num_replicas(
-        client_->device_count());
+
     std::unique_ptr<xla::PjRtExecutable> executable =
         client_->Compile(instance.computation, compile_options).ValueOrDie();
     std::shared_ptr<PjRtComputation> pjrt_computation =

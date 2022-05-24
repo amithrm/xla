@@ -74,13 +74,22 @@ xla::HloModuleProto ShardingUtil::SpmdPartitioningPass(
   xla::HloPassPipeline pass("spmd-partitioning");
   pass.AddPass<xla::HloVerifier>(/*layout_sensitive=*/false,
                                  /*allow_mixed_precision=*/false);
-  pass.AddPass<xla::ShardingPropagation>(/*is_spmd=*/true);
+  // TODO(yeounoh) side-effecting ops gets assigned replicated sharding.
+  // pass.AddPass<xla::ShardingPropagation>(
+  //     /*is_spmd=*/true, /*propagate_metadata=*/false,
+  //     /*allow_spmd_sharding_propagation_to_output=*/true);
   pass.AddPass<xla::spmd::SpmdPartitioner>(/*num_partitions=*/num_partitions,
                                            /*num_replicas=*/num_replicas,
                                            options, collective_ops_creator);
   pass.AddPass<xla::HloVerifier>(/*layout_sensitive=*/false,
                                  /*allow_mixed_precision=*/false);
   pass.Run(module.get());
+
+  std::cout << "Module proto after partitioning, has_spmd_output_sharding(): "
+            << module.get()->ToProto().has_spmd_output_sharding() << std::endl;
+  std::cout
+      << "Module proto after partitioning, spmd_parameters_shardings_size(): "
+      << module.get()->ToProto().spmd_parameters_shardings_size() << std::endl;
 
   return module.get()->ToProto();
 }
